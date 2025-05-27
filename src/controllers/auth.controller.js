@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
+const { verifyGoogleToken } = require('../utils/google-auth');
 
 const authController = {
 
@@ -74,6 +75,45 @@ const authController = {
 
         } catch (err) {
             res.status(500).json({ message: 'Server Error', error: err.message });
+        }
+    },
+
+    loginWithGoogle: async (req, res) => {
+        const { token: googleToken } = req.body;
+
+        try {
+            const payload = await verifyGoogleToken(googleToken);
+            const { email, name, given_name, family_name } = payload;
+
+            let user = await User.findOne({ email });
+            if (!user) {
+                user = await User.create({
+                    firstName: given_name || name.split(' ')[0],
+                    lastName: family_name || name.split(' ')[1] || '',
+                    email,
+                    password: '',
+                    role: 'STUDENT'
+                });
+            }
+
+            const appToken = jwt.sign(
+                {
+                    _id: user._id,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                    role: user.role,
+                    id: user.id
+                },
+                process.env.JWT_SECRET,
+                { expiresIn: '1d' }
+            );
+
+            res.json({ token: appToken, user });
+
+        } catch (error) {
+            console.error('Erreur Google login:', error.message);
+            res.status(401).json({ message: 'Token Google invalide' });
         }
     }
 };
